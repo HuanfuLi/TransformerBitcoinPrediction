@@ -1,5 +1,3 @@
-# 文件名: main.py
-
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -191,6 +189,10 @@ def main():
     # 6. [已修改] 生成用于模型验证的30天窗口对比图表
     # ===================================================================
     print("\n正在生成30天窗口验证图表...")
+    
+    # 在绘图前设置支持中文的字体
+    plt.rcParams['font.sans-serif'] = ['SimHei']  # 指定默认字体为黑体
+    plt.rcParams['axes.unicode_minus'] = False  # 解决保存图像是负号'-'显示为方块的问题
 
     predicted_days_val = model_settings['predicted_days']
     
