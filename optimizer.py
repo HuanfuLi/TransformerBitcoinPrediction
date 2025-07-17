@@ -52,7 +52,7 @@ class TransformerModel(nn.Module):
 # --- Data Handling Functions ---
 def get_btc_data():
     """Loads data from CSV."""
-    data_path = 'dataset/btc.csv'
+    data_path = 'dataset/btc_features.csv'
     if not os.path.exists(data_path): raise FileNotFoundError(f"Data file not found: '{data_path}'. Please run 'update_data.py' first.")
     df = pd.read_csv(data_path, parse_dates=['time']); df = df.sort_values('time').reset_index(drop=True)
     return df
@@ -115,8 +115,29 @@ def run_optimization(n_trials=50):
     print(f"  Validation Set:   {val_df['time'].min().strftime('%Y-%m-%d')} to {val_df['time'].max().strftime('%Y-%m-%d')} ({len(val_df)} days)")
     print(f"  Test Set:         {test_df['time'].min().strftime('%Y-%m-%d')} to {test_df['time'].max().strftime('%Y-%m-%d')} ({len(test_df)} days)\n")
     
-    # ** Key Change: No more StandardScaler **
-    feature_cols = ['close', 'volume']
+# Load suggested features if available
+    suggested_path = 'config/suggested_features.yaml'
+    try:
+        with open(suggested_path, 'r') as f:
+            suggested_config = yaml.safe_load(f)
+            feature_cols = suggested_config['features_to_use']
+        # Ensure 'close' is first for normalization
+        if 'close' not in feature_cols:
+            raise ValueError("'close' must be included in features_to_use.")
+        feature_cols = ['close'] + [f for f in feature_cols if f != 'close']
+        print(f"Using suggested features from {suggested_path}: {feature_cols}")
+    except FileNotFoundError:
+        feature_cols = ['close', 'volume']
+        print(f"Suggested features file not found. Falling back to defaults: {feature_cols}")
+    except Exception as e:
+        raise ValueError(f"Error loading suggested features: {e}")
+
+    # Validate features exist in DataFrame
+    missing_cols = [col for col in feature_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing features in data: {missing_cols}")
+
+    # Prepare data with selected features
     train_data = train_df[feature_cols].values
     val_data = val_df[feature_cols].values
     
@@ -147,5 +168,5 @@ def run_optimization(n_trials=50):
     print(f"\nBest configuration saved to: config/config_transformer.yaml")
 
 if __name__ == "__main__":
-    try: run_optimization(n_trials=15)
+    try: run_optimization(n_trials=3)
     except (FileNotFoundError, ValueError) as e: print(f"\nOperation terminated: {e}")

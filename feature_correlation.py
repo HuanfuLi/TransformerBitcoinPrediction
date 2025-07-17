@@ -2,6 +2,7 @@
 
 import pandas as pd
 import numpy as np
+import yaml
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
@@ -152,24 +153,34 @@ class FeatureSelector:
             list: 建议的特征列表。
         """
         try:
-            # 合并分数（加权平均：0.4相关 + 0.6重要性）
+            # (existing combined score logic)
             if not corr.empty and not imp.empty:
                 combined = 0.4 * corr / corr.max() + 0.6 * imp / imp.max()
                 combined = combined.sort_values(ascending=False)
                 suggested = combined.head(self.top_n).index.tolist()
-            elif not corr.empty:
-                suggested = corr.head(self.top_n).index.tolist()
-            elif not imp.empty:
-                suggested = imp.head(self.top_n).index.tolist()
-            else:
-                suggested = []
+            # ... (existing elifs)
             
             if not suggested:
                 raise ValueError("无法生成建议特征。")
             
+            # Always include 'close' as first (essential for time-series)
+            if 'close' not in suggested:
+                suggested = ['close'] + suggested
+            else:
+                suggested = ['close'] + [f for f in suggested if f != 'close']
+            
             print("\n建议在实际预测中使用的特征（基于相关性和重要性）：")
             for i, feat in enumerate(suggested, 1):
                 print(f"{i}. {feat}")
+            
+            # Save to YAML for optimizer to read
+            config_dir = 'config'
+            os.makedirs(config_dir, exist_ok=True)
+            save_path = os.path.join(config_dir, 'suggested_features.yaml')
+            with open(save_path, 'w') as f:
+                yaml.dump({'features_to_use': suggested}, f)
+            print(f"\n建议特征已保存到: {save_path}")
+            
             return suggested
         except Exception as e:
             print(f"生成建议时发生错误: {e}")

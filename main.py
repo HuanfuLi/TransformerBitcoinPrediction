@@ -74,7 +74,7 @@ def main():
     print("Configuration loaded successfully.")
 
     # 2. Load and Split Data based on Config
-    df = pd.read_csv('dataset/btc.csv', parse_dates=['time'])
+    df = pd.read_csv('dataset/btc_features.csv', parse_dates=['time'])
     train_start, train_end = pd.to_datetime(data_settings['train_start_date']), pd.to_datetime(data_settings['train_end_date'])
     val_start, val_end = pd.to_datetime(data_settings['validation_start_date']), pd.to_datetime(data_settings['validation_end_date'])
     test_start, test_end = pd.to_datetime(data_settings['test_start_date']), pd.to_datetime(data_settings['test_end_date'])
@@ -87,6 +87,11 @@ def main():
     print(f"Final training data range: {train_val_df['time'].min().strftime('%Y-%m-%d')} to {train_val_df['time'].max().strftime('%Y-%m-%d')}")
     print(f"Final test data range: {test_df['time'].min().strftime('%Y-%m-%d')} to {test_df['time'].max().strftime('%Y-%m-%d')}")
 
+    # Validate selected features exist
+    missing_cols = [col for col in feature_columns if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing features in data: {missing_cols}")
+    
     # 3. Prepare Training Data with Relative Normalization
     train_val_data = train_val_df[feature_columns].values
     X_train, y_train = extract_sequences(train_val_data, model_settings['time_step'], model_settings['predicted_days'])
