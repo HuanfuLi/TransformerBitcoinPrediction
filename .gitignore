@@ -3,6 +3,10 @@ dataset/
 outputs/
 config/
 
+# 忽略工具脚本
+combiner.py
+combined_scripts.txt
+
 # 忽略 Python 虚拟环境文件夹
 venv/
 env/

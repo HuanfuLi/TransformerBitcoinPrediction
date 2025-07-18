@@ -1,133 +1,135 @@
-# BitcoinConcise On Transformer
+# Easy Bitcoin on Transformer Project
 
-## 项目概述
+## Project Overview
 
-BitcoinConcise on Transformer 是一个基于 Python 的比特币价格预测系统，使用 Transformer 模型进行时间序列预测。该项目整合了比特币历史价格数据、恐惧贪婪指数（Fear & Greed Index），并通过特征工程、相关性分析和超参数优化来提升预测精度。项目支持多特征预测，包括技术指标（如移动平均线、RSI、MACD、布林带）和情绪指标。
+Easy Bitcoin on Transformer is a Python-based Bitcoin price prediction system that uses a Transformer model for time-series forecasting. This project integrates historical Bitcoin price data with the Fear & Greed Index, enhancing prediction accuracy through feature engineering, correlation analysis, and hyperparameter optimization. The project supports multi-feature prediction, including technical indicators (like Moving Averages, RSI, MACD, Bollinger Bands) and sentiment indicators.
 
-项目主要功能包括数据获取、特征工程、特征选择、模型优化、训练与预测，以及可视化结果。适用于比特币价格短期预测（默认5天），并通过相对归一化处理非平稳性问题。
+The main functionalities include data fetching, feature engineering, feature selection, model optimization, training, prediction, and results visualization. It is suitable for short-term Bitcoin price prediction (defaulting to 5 days) and handles the non-stationary nature of price data through relative normalization.
 
-**当前版本日期：** 2025年7月17日  
-**作者/维护者：** HuanfuLi
-**依赖环境：** Python 3.8+  
+**Current Version Date:** July 17, 2025
 
-## 主要功能
+**Author/Maintainer:** Huanfu Li
 
-1. **数据更新（update_data.py）**：
-   - 从 BitMEX API 获取比特币历史K线数据（开盘价、最高价、最低价、收盘价、交易量）。
-   - 从 Alternative.me API 获取恐惧贪婪指数数据。
-   - 保存数据到 `dataset/btc.csv` 和 `dataset/fear_greed_index.csv`。
+**Dependencies:** Python 3.8+
 
-2. **特征工程（feature_engineer.py）**：
-   - 合并比特币价格和恐惧贪婪指数数据。
-   - 计算移动平均线（MA_5, MA_10, MA_20, MA_50, MA_100）。
-   - 计算技术指标（如价格变化百分比、交易量变化百分比、高低价比率、RSI、MACD、MACD信号线、MACD柱状图、布林带上轨/下轨/宽度/中轨/标准差）。
-   - 计算情绪衍生特征（如归一化恐惧贪婪值、变化值、移动平均、波动率）。
-   - 处理缺失值，裁切初始无效数据，按类别排序列。
-   - 保存最终特征数据集到 `dataset/btc_features.csv`。
+## Key Features
 
-3. **特征选择（feature_correlation.py）**：
-   - 加载 `btc_features.csv`，计算每个特征与目标（收盘价）的Pearson相关系数。
-   - 使用随机森林模型计算特征重要性，并验证模型MSE。
-   - 基于相关性和重要性（加权平均）建议Top N特征（默认10个）。
-   - 保存建议特征到 `config/suggested_features.yaml`（始终将'close'置于首位）。
+1.  **Data Update (`update_data.py`)**:
+    * Fetches historical Bitcoin candlestick data (OHLCV) from the BitMEX API.
+    * Fetches Fear & Greed Index data from the Alternative.me API.
+    * Saves the data to `dataset/btc.csv` and `dataset/fear_greed_index.csv`.
 
-4. **模型优化（optimizer.py）**：
-   - 加载建议特征（若无则回退到['close', 'volume']）。
-   - 使用 `btc_features.csv` 中的数据，按时间划分训练/验证/测试集（默认总1000天，验证90天，测试90天）。
-   - 使用Optuna进行Transformer模型超参数优化（d_model, nhead, num_encoder_layers 等）。
-   - 生成配置文件 `config/config_transformer.yaml`，包括模型设置、数据日期范围、特征列表。
+2.  **Feature Engineering (`feature_engineer.py`)**:
+    * Merges Bitcoin price data with the Fear & Greed Index data.
+    * Calculates moving averages (MA_5, MA_10, MA_20, MA_50, MA_100).
+    * Computes technical indicators (e.g., price change percentage, volume change percentage, high-low ratio, RSI, MACD, MACD signal line, MACD histogram, Bollinger Bands).
+    * Generates sentiment-derived features (e.g., normalized F&G value, change, moving averages, volatility).
+    * Handles missing values, trims initial invalid data, and reorders columns by category.
+    * Saves the final feature-rich dataset to `dataset/btc_features.csv`.
 
-5. **模型训练与预测（main.py）**：
-   - 读取 `config_transformer.yaml` 中的配置和特征列表。
-   - 使用 `btc_features.csv` 中的数据训练Transformer模型（结合训练+验证集）。
-   - 在测试集上进行预测（默认最后5天），生成30天历史+5天预测的可视化图表。
-   - 保存图表到 `outputs/plots/` 目录。
+3.  **Feature Selection (`feature_correlation.py`)**:
+    * Loads `btc_features.csv` and calculates the Pearson correlation of each feature with the target (close price).
+    * Uses a Random Forest model to calculate feature importance and validates the model's MSE.
+    * Recommends the Top N features (default 10) based on a weighted average of correlation and importance.
+    * Saves the recommended features to `config/suggested_features.yaml`, always ensuring 'close' is the first feature.
 
-## 安装要求
+4.  **Model Optimization (`optimizer.py`)**:
+    * Loads the suggested features (or falls back to ['close', 'volume']).
+    * Uses data from `btc_features.csv`, splitting it chronologically into training, validation, and test sets (default: 1000 days total, 90 for validation, 90 for testing).
+    * Performs hyperparameter optimization for the Transformer model using Optuna (tuning `d_model`, `nhead`, `num_encoder_layers`, etc.).
+    * Generates a configuration file `config/config_transformer.yaml` with model settings, data date ranges, and the feature list.
 
-- **Python 版本：** 3.8 或更高。
-- **所需库：** 通过 `pip install -r requirements.txt` 安装：
-  ```
-  pandas
-  numpy
-  torch
-  optuna
-  yaml
-  matplotlib
-  scikit-learn
-  requests
-  ```
-- **硬件要求：** 支持CUDA或MPS的GPU可加速训练（否则使用CPU）。
-- **目录结构：**
-  ```
-  BitcoinConcise/
-  ├── dataset/              # 数据文件 (btc.csv, fear_greed_index.csv, btc_features.csv)
-  ├── config/               # 配置文件 (suggested_features.yaml, config_transformer.yaml)
-  ├── outputs/plots/        # 可视化图表
-  ├── update_data.py
-  ├── feature_engineer.py
-  ├── feature_correlation.py
-  ├── optimizer.py
-  ├── main.py
-  └── README.md
-  ```
+5.  **Model Training & Prediction (`main.py`)**:
+    * Reads the configuration and feature list from `config_transformer.yaml`.
+    * Trains the Transformer model using data from `btc_features.csv` (on the combined training + validation sets).
+    * Makes predictions on the test set (defaulting to the last 5 days) and generates a visualization chart showing 30 days of history + 5 days of prediction.
+    * Saves the chart to the `outputs/plots/` directory.
 
-## 使用说明
+## Installation Requirements
 
-### 运行顺序
-项目采用模块化设计，按以下顺序运行脚本以完成完整工作流：
+-   **Python Version:** 3.8 or higher.
+-   **Required Libraries:** Install via `pip install -r requirements.txt`:
+    ```
+    pandas
+    numpy
+    torch
+    optuna
+    PyYAML
+    matplotlib
+    scikit-learn
+    requests
+    ```
+-   **Hardware:** A GPU with CUDA or MPS support will accelerate training (CPU is used otherwise).
+-   **Directory Structure:**
+    ```
+    Easy-Bitcoin-on-Transformer/
+    ├── dataset/              # Data files (btc.csv, fear_greed_index.csv, btc_features.csv)
+    ├── config/               # Configuration files (suggested_features.yaml, config_transformer.yaml)
+    ├── outputs/plots/        # Visualization charts
+    ├── update_data.py
+    ├── feature_engineer.py
+    ├── feature_correlation.py
+    ├── optimizer.py
+    ├── main.py
+    ├── requirements.txt
+    └── README.md
+    ```
 
-1. **更新数据：**
-   ```
-   python update_data.py
-   ```
-   - 这将获取最新数据并保存到 `dataset/` 目录。
-   - 注意：API可能有速率限制，重试机制已内置。
+## Usage Instructions
 
-2. **进行特征工程：**
-   ```
-   python feature_engineer.py
-   ```
-   - 输入：`btc.csv` 和 `fear_greed_index.csv`。
-   - 输出：`btc_features.csv`（包含所有特征）。
-   - 如果数据缺失，会抛出错误提示。
+### Execution Order
+The project is designed with a modular workflow. Run the scripts in the following order to complete the full process:
 
-3. **特征选择：**
-   ```
-   python feature_correlation.py
-   ```
-   - 输入：`btc_features.csv`。
-   - 输出：终端打印Top 10相关系数/重要性/建议特征，并保存到 `suggested_features.yaml`。
-   - 可自定义 `top_n` 参数（如 `FeatureSelector(top_n=15)`）。
+1.  **Update Data:**
+    ```bash
+    python update_data.py
+    ```
+    -   This will fetch the latest data and save it to the `dataset/` directory.
+    -   Note: APIs may have rate limits; a retry mechanism is built-in.
 
-4. **模型优化：**
-   ```
-   python optimizer.py
-   ```
-   - 输入：`btc_features.csv` 和 `suggested_features.yaml`（若无则使用默认）。
-   - 输出：`config_transformer.yaml`（包含优化后的超参数和特征列表）。
-   - 可自定义 `n_trials`（默认50，建议15-50以节省时间）。
-   - 注意：优化过程可能耗时，取决于GPU可用性。
+2.  **Perform Feature Engineering:**
+    ```bash
+    python feature_engineer.py
+    ```
+    -   Inputs: `btc.csv` and `fear_greed_index.csv`.
+    -   Output: `btc_features.csv` (containing all engineered features).
+    -   Will throw an error if input files are missing.
 
-5. **训练与预测：**
-   ```
-   python main.py
-   ```
-   - 输入：`config_transformer.yaml` 和 `btc_features.csv`。
-   - 输出：训练日志、预测结果（终端打印）、可视化图表（保存到 `outputs/plots/`）。
-   - 图表显示测试集最后30天历史价格 vs. 5天预测价格。
+3.  **Select Features:**
+    ```bash
+    python feature_correlation.py
+    ```
+    -   Input: `btc_features.csv`.
+    -   Output: Prints the Top 10 correlations/importances/suggestions to the terminal and saves the feature list to `suggested_features.yaml`.
+    -   You can customize the `top_n` parameter in the script (e.g., `FeatureSelector(top_n=15)`).
 
-### 注意事项
-- **错误处理：** 每个脚本内置异常捕获和打印栈追踪。如果缺少文件，会提示运行前置脚本。
-- **自定义参数：**
-  - 在 `optimizer.py` 中调整 `TOTAL_DAYS_FOR_OPTIMIZATION`、`TEST_SET_SIZE_DAYS` 等以改变数据范围。
-  - 在 `feature_correlation.py` 中调整 `top_n` 以控制建议特征数量（过多可能导致过拟合）。
-- **多特征支持：** 系统自动使用建议特征进行训练，提高精度（例如整合RSI、MACD等指标）。
-- **可视化：** 生成的PNG图表包含历史真实价格（绿色）、预测价格（红色虚线）和预测起始线。
-- **性能提示：** 使用GPU可显著加速优化和训练。预测基于相对变化，适合非平稳时间序列。
-- **潜在问题：** 如果数据API不可用，手动检查网络或API状态。项目不保证预测准确性，仅供参考。
+4.  **Optimize the Model:**
+    ```bash
+    python optimizer.py
+    ```
+    -   Inputs: `btc_features.csv` and `suggested_features.yaml` (uses defaults if not found).
+    -   Output: `config_transformer.yaml` (containing optimized hyperparameters and the feature list).
+    -   You can customize `n_trials` (default is 50; 15-50 is recommended to save time).
+    -   Note: The optimization process can be time-consuming, depending on GPU availability.
 
-## 贡献与反馈
-欢迎提交Issue或Pull Request。如果有问题，请提供运行日志和环境细节。
+5.  **Train and Predict:**
+    ```bash
+    python main.py
+    ```
+    -   Inputs: `config_transformer.yaml` and `btc_features.csv`.
+    -   Outputs: Training logs, prediction results (printed to terminal), and a visualization chart saved to `outputs/plots/`.
+    -   The chart displays the last 30 days of historical price vs. the 5-day prediction.
 
-**免责声明：** 本项目用于教育和研究目的。比特币投资有风险，请勿基于预测进行实际交易。
+### Important Notes
+-   **Error Handling:** Each script includes exception handling and will print stack traces. If a file is missing, it will prompt you to run the prerequisite script.
+-   **Custom Parameters:**
+    -   In `optimizer.py`, adjust `TOTAL_DAYS_FOR_OPTIMIZATION`, `TEST_SET_SIZE_DAYS`, etc., to change the data range for optimization.
+    -   In `feature_correlation.py`, adjust `top_n` to control the number of suggested features (too many may lead to overfitting).
+-   **Multi-Feature Support:** The system automatically uses the suggested features for training to improve accuracy (e.g., by integrating RSI, MACD, etc.).
+-   **Visualization:** The generated PNG chart includes historical actual prices (green), predicted prices (red dashed line), and a line indicating the prediction start.
+-   **Performance Tip:** Using a GPU will significantly speed up optimization and training. Predictions are based on relative changes, making the model suitable for non-stationary time series.
+-   **Potential Issues:** If data APIs are unavailable, check your network or the API status manually. The project does not guarantee prediction accuracy and is for educational/referential purposes only.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
