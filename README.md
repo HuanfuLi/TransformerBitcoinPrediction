@@ -8,7 +8,7 @@ The main functionalities include data fetching, feature engineering, feature sel
 
 **Current Version Date:** July 17, 2025
 
-**Author/Maintainer:** HuanfuLi
+**Author/Maintainer:** Huanfu Li
 
 **Dependencies:** Python 3.8+
 
@@ -129,3 +129,7 @@ The project is designed with a modular workflow. Run the scripts in the followin
 -   **Visualization:** The generated PNG chart includes historical actual prices (green), predicted prices (red dashed line), and a line indicating the prediction start.
 -   **Performance Tip:** Using a GPU will significantly speed up optimization and training. Predictions are based on relative changes, making the model suitable for non-stationary time series.
 -   **Potential Issues:** If data APIs are unavailable, check your network or the API status manually. The project does not guarantee prediction accuracy and is for educational/referential purposes only.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
