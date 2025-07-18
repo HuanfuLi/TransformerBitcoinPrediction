@@ -1,0 +1,898 @@
+
+
+==============================
+文件路径: /Users/Code/BitcoinConcise/feature_correlation.py
+==============================
+
+# 文件名: feature_correlation.py
+
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+import os
+import traceback
+import warnings
+
+# 忽略警告以保持输出干净
+warnings.filterwarnings("ignore")
+
+class FeatureSelector:
+    """
+    一个用于分析比特币特征数据、计算特征相关性和重要性，并建议最佳特征的类。
+    
+    工作流程:
+    1. 加载包含所有特征的CSV文件。
+    2. 处理缺失值和异常。
+    3. 计算Pearson相关系数。
+    4. 使用随机森林计算特征重要性。
+    5. 基于相关性和重要性建议特征。
+    6. 在终端打印结果。
+    """
+
+    def __init__(self, data_path: str = 'dataset/btc_features.csv', target_col: str = 'close', top_n: int = 10):
+        """
+        初始化FeatureSelector。
+
+        Args:
+            data_path (str): 特征数据的CSV路径。
+            target_col (str): 目标列名，通常为'close'。
+            top_n (int): 建议的前N个特征。
+        """
+        self.data_path = data_path
+        self.target_col = target_col
+        self.top_n = top_n
+        self.df = None
+        print("特征选择器已初始化。")
+
+    def load_data(self) -> bool:
+        """
+        加载数据并进行基本验证。
+
+        Returns:
+            bool: 加载是否成功。
+        """
+        try:
+            if not os.path.exists(self.data_path):
+                raise FileNotFoundError(f"错误: 文件 '{self.data_path}' 不存在。请先运行 feature_engineer.py 生成它。")
+            
+            self.df = pd.read_csv(self.data_path, parse_dates=['time'])
+            if self.df.empty:
+                raise ValueError("错误: 加载的数据为空。")
+            
+            if self.target_col not in self.df.columns:
+                raise ValueError(f"错误: 目标列 '{self.target_col}' 不存在于数据中。")
+            
+            # 移除非数值列（除了'time'）
+            self.df = self.df.select_dtypes(include=[np.number])
+            if self.df.shape[1] < 2:
+                raise ValueError("错误: 数据中没有足够的数值特征。")
+            
+            print(f"成功加载 {len(self.df)} 行数据，包含 {len(self.df.columns)} 个数值列。")
+            return True
+        except Exception as e:
+            print(f"加载数据时发生错误: {e}")
+            traceback.print_exc()
+            return False
+
+    def handle_missing_values(self):
+        """
+        处理缺失值和无限值。
+        """
+        try:
+            # 替换无限值为NaN
+            self.df.replace([np.inf, -np.inf], np.nan, inplace=True)
+            # 前向填充缺失值
+            self.df.ffill(inplace=True)
+            # 剩余缺失值填充为0
+            self.df.fillna(0, inplace=True)
+            print("缺失值和异常值处理完成。")
+        except Exception as e:
+            print(f"处理缺失值时发生错误: {e}")
+            traceback.print_exc()
+
+    def calculate_correlations(self) -> pd.Series:
+        """
+        计算每个特征与目标的相关系数。
+
+        Returns:
+            pd.Series: 特征的相关系数（绝对值排序）。
+        """
+        try:
+            corr = self.df.corr()[self.target_col].drop(self.target_col)
+            corr_abs = corr.abs().sort_values(ascending=False)
+            print("Pearson相关系数计算完成。")
+            return corr_abs
+        except Exception as e:
+            print(f"计算相关系数时发生错误: {e}")
+            traceback.print_exc()
+            return pd.Series()
+
+    def calculate_feature_importances(self) -> pd.Series:
+        """
+        使用随机森林计算特征重要性。
+
+        Returns:
+            pd.Series: 特征重要性（排序）。
+        """
+        try:
+            X = self.df.drop(columns=[self.target_col])
+            y = self.df[self.target_col]
+            
+            # 拆分数据以避免过拟合
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            
+            # 标准化特征
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
+            
+            # 训练随机森林
+            rf = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+            rf.fit(X_train_scaled, y_train)
+            
+            # 计算MSE以验证模型
+            y_pred = rf.predict(X_test_scaled)
+            mse = mean_squared_error(y_test, y_pred)
+            print(f"随机森林验证MSE: {mse:.4f}")
+            
+            importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+            print("特征重要性计算完成。")
+            return importances
+        except Exception as e:
+            print(f"计算特征重要性时发生错误: {e}")
+            traceback.print_exc()
+            return pd.Series()
+
+    def suggest_features(self, corr: pd.Series, imp: pd.Series) -> list:
+        """
+        基于相关性和重要性建议特征。
+
+        Args:
+            corr (pd.Series): 相关系数。
+            imp (pd.Series): 重要性。
+
+        Returns:
+            list: 建议的特征列表。
+        """
+        try:
+            # 合并分数（加权平均：0.4相关 + 0.6重要性）
+            if not corr.empty and not imp.empty:
+                combined = 0.4 * corr / corr.max() + 0.6 * imp / imp.max()
+                combined = combined.sort_values(ascending=False)
+                suggested = combined.head(self.top_n).index.tolist()
+            elif not corr.empty:
+                suggested = corr.head(self.top_n).index.tolist()
+            elif not imp.empty:
+                suggested = imp.head(self.top_n).index.tolist()
+            else:
+                suggested = []
+            
+            if not suggested:
+                raise ValueError("无法生成建议特征。")
+            
+            print("\n建议在实际预测中使用的特征（基于相关性和重要性）：")
+            for i, feat in enumerate(suggested, 1):
+                print(f"{i}. {feat}")
+            return suggested
+        except Exception as e:
+            print(f"生成建议时发生错误: {e}")
+            traceback.print_exc()
+            return []
+
+    def run(self):
+        """
+        执行完整的特征选择流程。
+        """
+        if not self.load_data():
+            return
+        
+        self.handle_missing_values()
+        
+        corr = self.calculate_correlations()
+        if not corr.empty:
+            print("\nTop 10 相关系数（绝对值）：")
+            print(corr.head(10))
+        
+        imp = self.calculate_feature_importances()
+        if not imp.empty:
+            print("\nTop 10 特征重要性：")
+            print(imp.head(10))
+        
+        self.suggest_features(corr, imp)
+
+if __name__ == "__main__":
+    selector = FeatureSelector()
+    selector.run()
+
+==============================
+文件路径: /Users/Code/BitcoinConcise/feature_engineer.py
+==============================
+
+# 文件名: feature_engineer.py
+
+import pandas as pd
+import numpy as np
+import os
+from typing import Tuple
+
+class FeatureEngineer:
+    """
+    一个用于处理比特币数据、整合情绪指数并进行全面特征工程的类。
+    
+    工作流程:
+    1. 加载比特币价格数据和恐惧贪婪指数数据。
+    2. 合并两个数据源。
+    3. 计算各类技术指标和衍生特征。
+    4. 处理因计算产生的缺失值。
+    5. 动态裁切掉数据头部的无效0值行。
+    6. 按类别重新排序特征列。
+    7. 保存包含所有特征的最终数据集。
+    """
+
+    def __init__(self, data_dir: str = 'dataset'):
+        """
+        初始化FeatureEngineer。
+
+        Args:
+            data_dir (str): 存放输入和输出CSV文件的数据目录。
+        """
+        self.data_dir = data_dir
+        self.btc_path = os.path.join(data_dir, 'btc.csv')
+        self.fg_path = os.path.join(data_dir, 'fear_greed_index.csv')
+        self.output_path = os.path.join(data_dir, 'btc_features.csv')
+        print(f"数据处理器已初始化。输入文件: {self.btc_path}, {self.fg_path}")
+
+    def load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        从CSV文件加载比特币价格和恐惧贪婪指数数据。
+        """
+        print("步骤 1/7: 正在加载输入数据...")
+        if not os.path.exists(self.btc_path) or not os.path.exists(self.fg_path):
+            raise FileNotFoundError(
+                f"错误: 缺少输入文件。请确保 '{self.btc_path}' 和 '{self.fg_path}' 都存在。\n"
+                "请先运行 `update_data.py` 来生成这些文件。"
+            )
+        
+        btc_df = pd.read_csv(self.btc_path, parse_dates=['time'])
+        fg_df = pd.read_csv(self.fg_path, parse_dates=['date'])
+        
+        print(f"成功加载 {len(btc_df)} 条BTC数据和 {len(fg_df)} 条恐惧贪婪指数数据。")
+        return btc_df, fg_df
+
+    def merge_data(self, btc_df: pd.DataFrame, fg_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        将比特币数据和恐惧贪婪指数数据按日期合并。
+        """
+        print("步骤 2/7: 正在合并数据源...")
+        fg_df.rename(columns={'date': 'time'}, inplace=True)
+        merged_df = pd.merge(btc_df, fg_df, on='time', how='left')
+        print("数据合并完成。")
+        return merged_df
+
+    def calculate_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        计算所有衍生特征。
+        """
+        print("步骤 3/7: 正在进行特征工程计算...")
+        df = self._calculate_moving_averages(df)
+        df = self._calculate_technical_indicators(df)
+        df = self._calculate_sentiment_features(df)
+        print("所有特征计算完成。")
+        return df
+
+    def _calculate_moving_averages(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算不同周期的移动平均线。"""
+        ma_windows = [5, 10, 20, 50, 100]
+        for window in ma_windows:
+            df[f'MA_{window}'] = df['close'].rolling(window=window, min_periods=1).mean()
+        return df
+
+    def _calculate_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算所有技术指标。"""
+        df['price_change_pct'] = df['close'].pct_change()
+        df['volume_change_pct'] = df['volume'].pct_change()
+        df['high_low_ratio'] = df['high'] / df['low']
+        
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+
+        ema_12 = df['close'].ewm(span=12, adjust=False).mean()
+        ema_26 = df['close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = ema_12 - ema_26
+        df['MACD_signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        df['MACD_hist'] = df['MACD'] - df['MACD_signal']
+        
+        df['BB_middle'] = df['close'].rolling(window=20).mean()
+        df['BB_std'] = df['close'].rolling(window=20).std()
+        df['BB_upper'] = df['BB_middle'] + (df['BB_std'] * 2)
+        df['BB_lower'] = df['BB_middle'] - (df['BB_std'] * 2)
+        df['BB_width'] = (df['BB_upper'] - df['BB_lower']) / df['BB_middle']
+        
+        return df
+
+    def _calculate_sentiment_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算基于恐惧贪婪指数的衍生特征。"""
+        if 'fear_greed_value' not in df.columns: return df
+        df['fear_greed_normalized'] = df['fear_greed_value'] / 100.0
+        df['fear_greed_change'] = df['fear_greed_value'].diff()
+        for window in [3, 7, 14, 30]:
+            df[f'fear_greed_ma_{window}'] = df['fear_greed_value'].rolling(window=window, min_periods=1).mean()
+        df['fear_greed_volatility_7d'] = df['fear_greed_value'].rolling(window=7, min_periods=1).std()
+        return df
+
+    def handle_missing_values(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        处理数据中的缺失值。
+        """
+        print("步骤 4/7: 正在处理缺失值...")
+        cols_to_fill = [col for col in df.columns if 'fear_greed' in col]
+        df[cols_to_fill] = df[cols_to_fill].ffill()
+        df.ffill(inplace=True)
+        df.fillna(0, inplace=True)
+        print("缺失值处理完成。")
+        return df
+
+    def trim_initial_zeros(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        [新增功能] 从DataFrame的开头裁切掉所有包含0值的行，直到找到第一个完全非0的行。
+        这主要用于移除因移动平均线、情绪指数数据延迟等原因造成的无效初始数据。
+
+        Args:
+            df (pd.DataFrame): 待裁切的DataFrame。
+
+        Returns:
+            pd.DataFrame: 裁切掉头部无效行后的DataFrame。
+        """
+        print("步骤 5/7: 正在裁切数据集以移除初始的0值行...")
+        
+        # 我们只关心衍生特征列，基础价格和交易量本身可能为0
+        # 这里以 'BB_upper' 和 'fear_greed_value' 作为关键检查列
+        # 因为它们一个是计算周期最长的技术指标之一，一个是外部数据源
+        key_check_cols = ['BB_upper', 'fear_greed_value']
+        
+        first_valid_index = 0
+        for col in key_check_cols:
+            if col in df.columns:
+                # 找到该列第一个非零值的索引
+                first_nonzero_index_for_col = (df[col] != 0).idxmax()
+                # 更新我们需要保留的起始索引，取所有关键列中非零索引的最大值
+                first_valid_index = max(first_valid_index, first_nonzero_index_for_col)
+        
+        if first_valid_index > 0:
+            original_rows = len(df)
+            trimmed_df = df.loc[first_valid_index:].reset_index(drop=True)
+            print(f"数据裁切完成。从索引 {first_valid_index} 开始保留数据，移除了 {original_rows - len(trimmed_df)} 行。")
+            print(f"新的起始日期为: {trimmed_df['time'].iloc[0].strftime('%Y-%m-%d')}")
+            return trimmed_df
+        else:
+            print("未发现需要裁切的初始0值行，返回原始数据。")
+            return df
+
+    def reorder_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        按类别对DataFrame的列进行排序。
+        """
+        print("步骤 6/7: 正在按类别重新排序特征列...")
+        base_cols = ['time', 'open', 'high', 'low', 'close', 'volume']
+        ma_cols = sorted([col for col in df.columns if col.startswith('MA_')], key=lambda x: int(x.split('_')[1]))
+        indicator_cols = sorted([col for col in df.columns if col not in base_cols and col not in ma_cols and 'fear_greed' not in col])
+        sentiment_cols = sorted([col for col in df.columns if 'fear_greed' in col])
+        final_order = base_cols + ma_cols + indicator_cols + sentiment_cols
+        existing_cols = [col for col in final_order if col in df.columns]
+        return df[existing_cols]
+
+    def save_features(self, df: pd.DataFrame):
+        """
+        将最终的特征DataFrame保存到CSV文件。
+        """
+        print(f"步骤 7/7: 正在保存最终特征文件到 {self.output_path}...")
+        df.to_csv(self.output_path, index=False)
+        print("="*50)
+        print(f"成功！最终特征文件已保存。")
+        print(f"总计 {len(df)} 行, {len(df.columns)} 个特征。")
+        print("="*50)
+
+    def run(self):
+        """
+        执行完整的特征工程流水线。
+        """
+        try:
+            btc_df, fg_df = self.load_data()
+            merged_df = self.merge_data(btc_df, fg_df)
+            features_df = self.calculate_features(merged_df)
+            cleaned_df = self.handle_missing_values(features_df)
+            # [新增] 调用裁切功能
+            trimmed_df = self.trim_initial_zeros(cleaned_df)
+            ordered_df = self.reorder_columns(trimmed_df)
+            self.save_features(ordered_df)
+        except Exception as e:
+            print(f"\n在执行过程中发生严重错误: {e}")
+            import traceback
+            traceback.print_exc()
+
+if __name__ == "__main__":
+    feature_engineer = FeatureEngineer()
+    feature_engineer.run()
+
+==============================
+文件路径: /Users/Code/BitcoinConcise/main.py
+==============================
+
+# filename: main.py (Corrected)
+
+import torch
+import torch.nn as nn
+import pandas as pd
+import numpy as np
+import yaml
+import os
+import math
+import datetime as dt
+import matplotlib.pyplot as plt
+
+# --- Global Settings (CUDA and MPS Support) ---
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    print("Detected CUDA device, using GPU acceleration.")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+    print("Detected Apple MPS device, using GPU acceleration.")
+else:
+    DEVICE = torch.device("cpu")
+    print("No GPU detected, using CPU.")
+
+# --- Model Definition (Unchanged) ---
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, d_model); position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term); pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0); self.register_buffer('pe', pe)
+    def forward(self, x): return x + self.pe[:, :x.size(1), :]
+
+class TransformerModel(nn.Module):
+    def __init__(self, input_size, d_model, nhead, num_encoder_layers, dim_feedforward, dropout, output_size):
+        super(TransformerModel, self).__init__()
+        self.d_model = d_model; self.input_projection = nn.Linear(input_size, d_model); self.pos_encoder = PositionalEncoding(d_model)
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers); self.decoder = nn.Linear(d_model, output_size)
+    def forward(self, src):
+        src = self.input_projection(src); src = self.pos_encoder(src); output = self.transformer_encoder(src)
+        output = self.decoder(output[:, -1, :]); return output
+
+# --- Data Handling Functions ---
+def load_config(file_path='config/config_transformer.yaml'):
+    """Loads YAML configuration file."""
+    if not os.path.exists(file_path): raise FileNotFoundError(f"Configuration file not found: '{file_path}'. Please run 'optimizer.py' first.")
+    with open(file_path, 'r') as f: return yaml.safe_load(f)
+
+def extract_sequences(data, time_step, predicted_days):
+    """Extracts sequences and applies relative normalization to 'close' (assumed to be column 0)."""
+    X, Y = [], []
+    for i in range(len(data) - time_step - predicted_days + 1):
+        input_seq = data[i:i + time_step].copy()
+        last_close = input_seq[-1, 0]
+        if last_close == 0: last_close = 1e-8
+        
+        input_seq[:, 0] /= last_close
+        X.append(input_seq)
+        
+        y_seq = data[i + time_step:i + time_step + predicted_days, 0] / last_close
+        Y.append(y_seq)
+        
+    return np.array(X), np.array(Y)
+
+def main():
+    """Main function for training and validation."""
+    print("Starting model training and validation process...")
+
+    # 1. Load Configuration
+    config = load_config()
+    model_settings, data_settings = config['model_settings'], config['data_settings']
+    transformer_config, feature_columns = config['model_specific']['Transformer'], config['feature_settings']['features_to_use']
+    print("Configuration loaded successfully.")
+
+    # 2. Load and Split Data based on Config
+    df = pd.read_csv('dataset/btc.csv', parse_dates=['time'])
+    train_start, train_end = pd.to_datetime(data_settings['train_start_date']), pd.to_datetime(data_settings['train_end_date'])
+    val_start, val_end = pd.to_datetime(data_settings['validation_start_date']), pd.to_datetime(data_settings['validation_end_date'])
+    test_start, test_end = pd.to_datetime(data_settings['test_start_date']), pd.to_datetime(data_settings['test_end_date'])
+    
+    train_val_df = df[df['time'].between(train_start, val_end)].copy()
+    test_df = df[df['time'].between(test_start, test_end)].copy()
+    
+    for d_set in [train_val_df, test_df]: d_set.ffill(inplace=True); d_set.fillna(0, inplace=True)
+    
+    print(f"Final training data range: {train_val_df['time'].min().strftime('%Y-%m-%d')} to {train_val_df['time'].max().strftime('%Y-%m-%d')}")
+    print(f"Final test data range: {test_df['time'].min().strftime('%Y-%m-%d')} to {test_df['time'].max().strftime('%Y-%m-%d')}")
+
+    # 3. Prepare Training Data with Relative Normalization
+    train_val_data = train_val_df[feature_columns].values
+    X_train, y_train = extract_sequences(train_val_data, model_settings['time_step'], model_settings['predicted_days'])
+    X_train_tensor, y_train_tensor = torch.FloatTensor(X_train).to(DEVICE), torch.FloatTensor(y_train).to(DEVICE)
+    
+    # 4. Initialize and Train Model
+    model = TransformerModel(input_size=X_train.shape[2], output_size=y_train.shape[1], **transformer_config).to(DEVICE)
+    criterion, optimizer = nn.MSELoss(), torch.optim.Adam(model.parameters(), lr=model_settings['learning_rate'])
+    
+    print("\nStarting model training...")
+    for epoch in range(model_settings['epochs']):
+        model.train()
+        permutation = torch.randperm(X_train_tensor.size(0)); epoch_loss, num_batches = 0.0, 0
+        for i in range(0, X_train_tensor.size(0), model_settings['batch_size']):
+            optimizer.zero_grad(); indices = permutation[i:i + model_settings['batch_size']]; batch_X, batch_y = X_train_tensor[indices], y_train_tensor[indices]
+            outputs = model(batch_X); loss = criterion(outputs, batch_y); loss.backward(); optimizer.step()
+            epoch_loss += loss.item(); num_batches += 1
+        if (epoch + 1) % 10 == 0: print(f"Epoch {epoch+1}/{model_settings['epochs']}, Training Loss: {epoch_loss/num_batches:.6f}")
+    print("Model training complete!")
+
+    # 5. Validation and Plotting on the Test Set
+    print(f"\nValidating on test set and plotting the last {len(test_df.tail(30))} days for fit visualization...")
+
+    predict_target_start_date = test_df['time'].iloc[-5]
+    pred_input_start_date = predict_target_start_date - pd.DateOffset(days=model_settings['time_step'])
+    pred_input_df = df[df['time'].between(pred_input_start_date, predict_target_start_date, inclusive='left')].copy()
+    
+    # ** Key Change: Prepare prediction input with relative normalization **
+    pred_features = pred_input_df[feature_columns].values
+    last_close_for_prediction = pred_features[-1, 0]
+    if last_close_for_prediction == 0: last_close_for_prediction = 1e-8
+    
+    pred_input_normalized = pred_features.copy()
+    pred_input_normalized[:, 0] /= last_close_for_prediction
+    pred_input_tensor = torch.FloatTensor(pred_input_normalized.reshape(1, model_settings['time_step'], -1)).to(DEVICE)
+
+    # Make prediction (output will be relative ratios)
+    model.eval()
+    with torch.no_grad(): prediction_tensor = model(pred_input_tensor)
+    prediction_relative = prediction_tensor.cpu().numpy()[0]
+    
+    # ** Key Change: Convert relative prediction back to absolute price **
+    final_predictions = prediction_relative * last_close_for_prediction
+    pred_dates = pd.date_range(start=predict_target_start_date, periods=model_settings['predicted_days'])
+    
+    # 6. Plotting
+    plot_data_df = test_df.tail(30)
+    plt.figure(figsize=(15, 8))
+    plt.plot(plot_data_df['time'], plot_data_df['close'], 'g-', label='Historical Actual Price', linewidth=2)
+    plt.plot(pred_dates, final_predictions, 'r--', label=f'Model Prediction ({model_settings["predicted_days"]} days)', marker='o')
+    plt.axvline(x=predict_target_start_date, color='black', linestyle=':', alpha=0.7, label='Prediction Start')
+    plt.title(f"Model Validation: Last 30 Days of Test Set vs. 5-Day Prediction", fontsize=16)
+    plt.xlabel('Date'); plt.ylabel('Price (USD)'); plt.legend(); plt.grid(True, alpha=0.3); plt.xticks(rotation=45); plt.tight_layout()
+    
+    plot_dir = 'outputs/plots'
+    os.makedirs(plot_dir, exist_ok=True)
+    filename = f"{plot_dir}/final_validation_plot_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f"\nValidation plot saved successfully to: {filename}")
+
+if __name__ == '__main__':
+    try: main()
+    except (FileNotFoundError, ValueError, KeyError) as e: print(f"\nError: {e}")
+
+==============================
+文件路径: /Users/Code/BitcoinConcise/optimizer.py
+==============================
+
+# filename: optimizer.py (Corrected)
+
+import torch
+import torch.nn as nn
+import pandas as pd
+import numpy as np
+import optuna
+import yaml
+import os
+import math
+import datetime
+from sklearn.preprocessing import StandardScaler
+
+# --- User Configuration: Data Range for Optimization ---
+TOTAL_DAYS_FOR_OPTIMIZATION = 1000
+TEST_SET_SIZE_DAYS = 90
+VALIDATION_SET_SIZE_DAYS = 90
+# The rest (820 days) will be used for training.
+# --- End of Configuration ---
+
+# --- Global Settings (CUDA and MPS Support) ---
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    print("Detected CUDA device, using GPU acceleration.")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+    print("Detected Apple MPS device, using GPU acceleration.")
+else:
+    DEVICE = torch.device("cpu")
+    print("No GPU detected, using CPU.")
+
+# --- Model Definition (Unchanged) ---
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, d_model); position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term); pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0); self.register_buffer('pe', pe)
+    def forward(self, x): return x + self.pe[:, :x.size(1), :]
+
+class TransformerModel(nn.Module):
+    def __init__(self, input_size, d_model, nhead, num_encoder_layers, dim_feedforward, dropout, output_size):
+        super(TransformerModel, self).__init__()
+        self.d_model = d_model; self.input_projection = nn.Linear(input_size, d_model); self.pos_encoder = PositionalEncoding(d_model)
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers); self.decoder = nn.Linear(d_model, output_size)
+    def forward(self, src):
+        src = self.input_projection(src); src = self.pos_encoder(src); output = self.transformer_encoder(src)
+        output = self.decoder(output[:, -1, :]); return output
+
+# --- Data Handling Functions ---
+def get_btc_data():
+    """Loads data from CSV."""
+    data_path = 'dataset/btc.csv'
+    if not os.path.exists(data_path): raise FileNotFoundError(f"Data file not found: '{data_path}'. Please run 'update_data.py' first.")
+    df = pd.read_csv(data_path, parse_dates=['time']); df = df.sort_values('time').reset_index(drop=True)
+    return df
+
+def extract_sequences(data, time_step, predicted_days):
+    """Extracts sequences and applies relative normalization to 'close' (assumed to be column 0)."""
+    X, Y = [], []
+    for i in range(len(data) - time_step - predicted_days + 1):
+        input_seq = data[i:i + time_step].copy()
+        last_close = input_seq[-1, 0]
+        if last_close == 0: last_close = 1e-8
+        
+        # Normalize the 'close' column of the input sequence
+        input_seq[:, 0] /= last_close
+        X.append(input_seq)
+        
+        # Normalize the target 'close' values
+        y_seq = data[i + time_step:i + time_step + predicted_days, 0] / last_close
+        Y.append(y_seq)
+        
+    return np.array(X), np.array(Y)
+
+def objective(trial, X_train, y_train, X_val, y_val, input_size, output_size):
+    """Optuna objective function."""
+    nhead = trial.suggest_categorical('nhead', [2, 4, 8]); d_model = trial.suggest_categorical('d_model', [32, 64, 128])
+    if d_model % nhead != 0: raise optuna.exceptions.TrialPruned()
+    num_encoder_layers = trial.suggest_int('num_encoder_layers', 2, 6); dim_feedforward = trial.suggest_int('dim_feedforward', 128, 512, step=64)
+    dropout = trial.suggest_float('dropout', 0.1, 0.4); learning_rate = trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True)
+    batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+    model = TransformerModel(input_size=input_size, d_model=d_model, nhead=nhead, num_encoder_layers=num_encoder_layers, dim_feedforward=dim_feedforward, dropout=dropout, output_size=output_size).to(DEVICE)
+    criterion = nn.MSELoss(); optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    X_train_tensor, y_train_tensor = torch.FloatTensor(X_train).to(DEVICE), torch.FloatTensor(y_train).to(DEVICE)
+    X_val_tensor, y_val_tensor = torch.FloatTensor(X_val).to(DEVICE), torch.FloatTensor(y_val).to(DEVICE)
+    for epoch in range(30):
+        model.train(); permutation = torch.randperm(X_train_tensor.size(0))
+        for i in range(0, X_train_tensor.size(0), batch_size):
+            optimizer.zero_grad(); indices = permutation[i:i+batch_size]; batch_X, batch_y = X_train_tensor[indices], y_train_tensor[indices]
+            outputs = model(batch_X); loss = criterion(outputs, batch_y); loss.backward(); optimizer.step()
+    model.eval()
+    with torch.no_grad(): val_outputs = model(X_val_tensor); val_loss = criterion(val_outputs, y_val_tensor)
+    if DEVICE.type in ['mps', 'cuda']: torch.cuda.empty_cache() if DEVICE.type == 'cuda' else torch.mps.empty_cache()
+    return val_loss.item()
+
+# --- Main Optimization Flow ---
+def run_optimization(n_trials=50):
+    """Runs the hyperparameter optimization."""
+    print("Starting hyperparameter optimization for Transformer model...")
+    df = get_btc_data(); end_date = df['time'].max(); start_date = end_date - pd.DateOffset(days=TOTAL_DAYS_FOR_OPTIMIZATION - 1)
+    print(f"Latest date in dataset: {end_date.strftime('%Y-%m-%d')}. Using this as the base for date calculations.")
+    data_block_df = df[(df['time'] >= start_date) & (df['time'] <= end_date)].copy()
+    test_split_date = end_date - pd.DateOffset(days=TEST_SET_SIZE_DAYS)
+    validation_split_date = test_split_date - pd.DateOffset(days=VALIDATION_SET_SIZE_DAYS)
+    train_df = data_block_df[data_block_df['time'] < validation_split_date].copy()
+    val_df = data_block_df[(data_block_df['time'] >= validation_split_date) & (data_block_df['time'] < test_split_date)].copy()
+    test_df = data_block_df[data_block_df['time'] >= test_split_date].copy()
+    for d_set in [train_df, val_df, test_df]: d_set.ffill(inplace=True); d_set.fillna(0, inplace=True)
+    print("\nDynamically split dataset based on latest data:")
+    print(f"  Total Data Block: {data_block_df['time'].min().strftime('%Y-%m-%d')} to {data_block_df['time'].max().strftime('%Y-%m-%d')}")
+    print(f"  Training Set:     {train_df['time'].min().strftime('%Y-%m-%d')} to {train_df['time'].max().strftime('%Y-%m-%d')} ({len(train_df)} days)")
+    print(f"  Validation Set:   {val_df['time'].min().strftime('%Y-%m-%d')} to {val_df['time'].max().strftime('%Y-%m-%d')} ({len(val_df)} days)")
+    print(f"  Test Set:         {test_df['time'].min().strftime('%Y-%m-%d')} to {test_df['time'].max().strftime('%Y-%m-%d')} ({len(test_df)} days)\n")
+    
+    # ** Key Change: No more StandardScaler **
+    feature_cols = ['close', 'volume']
+    train_data = train_df[feature_cols].values
+    val_data = val_df[feature_cols].values
+    
+    time_step = 60; predicted_days = 5
+    X_train, y_train = extract_sequences(train_data, time_step, predicted_days)
+    X_val, y_val = extract_sequences(val_data, time_step, predicted_days)
+
+    if len(X_train) == 0 or len(X_val) == 0: raise ValueError("Error: Dataset is too small to create valid training or validation sequences.")
+    
+    study = optuna.create_study(direction='minimize')
+    study.optimize(lambda trial: objective(trial, X_train, y_train, X_val, y_val, X_train.shape[2], y_train.shape[1]), n_trials=n_trials)
+    
+    best_params = study.best_params
+    print(f"\nOptimization complete! Best validation loss: {study.best_value:.6f}\nBest hyperparameters: {best_params}")
+    
+    config = {
+        'model_settings': { 'time_step': time_step, 'predicted_days': predicted_days, 'learning_rate': best_params['learning_rate'], 'batch_size': best_params['batch_size'], 'epochs': 200 },
+        'data_settings': {
+            'train_start_date': train_df['time'].min().strftime('%Y-%m-%d'), 'train_end_date': train_df['time'].max().strftime('%Y-%m-%d'),
+            'validation_start_date': val_df['time'].min().strftime('%Y-%m-%d'), 'validation_end_date': val_df['time'].max().strftime('%Y-%m-%d'),
+            'test_start_date': test_df['time'].min().strftime('%Y-%m-%d'), 'test_end_date': test_df['time'].max().strftime('%Y-%m-%d'),
+        },
+        'model_specific': { 'Transformer': { 'd_model': best_params['d_model'], 'nhead': best_params['nhead'], 'num_encoder_layers': best_params['num_encoder_layers'], 'dim_feedforward': best_params['dim_feedforward'], 'dropout': best_params['dropout'] } },
+        'feature_settings': { 'features_to_use': feature_cols }
+    }
+    config_dir = 'config'; os.makedirs(config_dir, exist_ok=True)
+    with open(os.path.join(config_dir, 'config_transformer.yaml'), 'w') as f: yaml.dump(config, f, default_flow_style=False)
+    print(f"\nBest configuration saved to: config/config_transformer.yaml")
+
+if __name__ == "__main__":
+    try: run_optimization(n_trials=15)
+    except (FileNotFoundError, ValueError) as e: print(f"\nOperation terminated: {e}")
+
+==============================
+文件路径: /Users/Code/BitcoinConcise/update_data.py
+==============================
+
+import requests
+import pandas as pd
+import datetime as dt
+import time
+import os
+import json
+import logging
+from pathlib import Path
+from typing import Optional
+
+# ===================================================================
+# Part 1: Bitcoin Price Data Fetching (from BitMEX)
+# ===================================================================
+
+def get_bitmex_historical_data(
+        symbol="XBTUSD",
+        interval="1d",
+        start_time="2018-01-01",
+        end_time=None,
+        limit=1000,
+        max_retries=5
+):
+    """
+    从 BitMEX 获取指定时间范围内的历史K线数据。
+    """
+    if end_time is None:
+        end_time = pd.Timestamp.utcnow()
+    else:
+        end_time = pd.to_datetime(end_time).tz_localize('UTC')
+
+    current_start_time = pd.to_datetime(start_time).tz_localize('UTC')
+    url = "https://www.bitmex.com/api/v1/trade/bucketed"
+    all_data = []
+    retry_count = 0
+
+    print(f"正在从 BitMEX 获取 {symbol} 从 {current_start_time.strftime('%Y-%m-%d')} 到 {end_time.strftime('%Y-%m-%d')} 的 {interval} K线数据...")
+
+    while current_start_time < end_time:
+        params = {"symbol": symbol, "binSize": interval, "count": limit, "startTime": current_start_time.isoformat(), "partial": "false"}
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            candles = response.json()
+
+            if not candles:
+                print("\n没有更多数据了。")
+                break
+
+            all_data.extend(candles)
+            last_timestamp = pd.to_datetime(candles[-1]['timestamp'])
+            current_start_time = last_timestamp + pd.Timedelta(days=1)
+            retry_count = 0
+            print(f"已获取 {len(all_data)} 条记录... (当前获取到 {last_timestamp.strftime('%Y-%m-%d')})", end="\r")
+            time.sleep(0.5)
+
+        except Exception as e:
+            retry_count += 1
+            if retry_count > max_retries:
+                print(f"\n错误: {str(e)} - 已达到最大重试次数，终止获取。")
+                break
+            print(f"\n请求时发生错误: {str(e)}。将在 {1.5 ** retry_count:.1f} 秒后重试...")
+            time.sleep(1.5 ** retry_count)
+
+    if not all_data:
+        print("未能获取到任何数据。")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(all_data)
+    df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+    df.rename(columns={'timestamp': 'time'}, inplace=True)
+    df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
+    for col in ['open', 'high', 'low', 'close', 'volume']:
+        df[col] = pd.to_numeric(df[col])
+    df = df.sort_values("time").reset_index(drop=True)
+    df = df.drop_duplicates(subset=["time"])
+    df = df[df['time'] <= end_time.tz_localize(None)]
+
+    print(f"\n数据获取完成！共 {len(df)} 条记录 (时间范围: {df['time'].min().strftime('%Y-%m-%d')} 至 {df['time'].max().strftime('%Y-%m-%d')})")
+    return df
+
+# ===================================================================
+# Part 2: Fear & Greed Index Data Fetching
+# ===================================================================
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def get_fear_greed_data(api_url="https://api.alternative.me/fng/", limit=0) -> Optional[pd.DataFrame]:
+    """
+    从 Alternative.me API 获取 Fear & Greed Index 数据。
+    """
+    try:
+        # 移除 date_format=cn 参数，直接处理时间戳更可靠
+        url = f"{api_url}?limit={limit}"
+        print("正在从 alternative.me 获取 Fear & Greed Index 数据...")
+        
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json().get('data', [])
+
+        if not data:
+            logger.error("API响应中未找到有效数据。")
+            return None
+
+        df = pd.DataFrame(data)
+
+        # [核心修正] 从 'timestamp' 列创建 'date' 列
+        # API返回的时间戳是字符串格式的秒级Unix时间戳
+        df['timestamp'] = pd.to_numeric(df['timestamp'])
+        # 将其转换为datetime对象，并只取日期部分
+        df['date'] = pd.to_datetime(df['timestamp'], unit='s').dt.date
+        # 再次转换为datetime64[ns]类型，以确保与btc.csv中的'time'列类型一致
+        df['date'] = pd.to_datetime(df['date'])
+
+        # 重命名其他列
+        df.rename(columns={'value': 'fear_greed_value', 'value_classification': 'fear_greed_classification'}, inplace=True)
+        df['fear_greed_value'] = pd.to_numeric(df['fear_greed_value'])
+        
+        # 选择并排序最终的列
+        df = df[['date', 'fear_greed_value', 'fear_greed_classification']]
+        df = df.sort_values('date').reset_index(drop=True)
+        
+        print(f"Fear & Greed Index 获取完成！共 {len(df)} 条记录 (时间范围: {df['date'].min().strftime('%Y-%m-%d')} 至 {df['date'].max().strftime('%Y-%m-%d')})")
+        return df
+
+    except Exception as e:
+        logger.error(f"获取 Fear & Greed Index 数据时发生错误: {e}")
+        return None
+
+# ===================================================================
+# Part 3: Main Execution Block
+# ===================================================================
+
+if __name__ == "__main__":
+    DATASET_DIR = 'dataset'
+    if not os.path.exists(DATASET_DIR):
+        os.makedirs(DATASET_DIR)
+
+    # --- Step 1: Updating Bitcoin (BTC) Price Data ---
+    print("--- Step 1: Updating Bitcoin (BTC) Price Data ---")
+    btc_df = get_bitmex_historical_data()
+    if btc_df is not None and not btc_df.empty:
+        output_path = os.path.join(DATASET_DIR, 'btc.csv')
+        btc_df.to_csv(output_path, index=False)
+        print(f"Bitcoin data successfully saved to: {output_path}")
+    else:
+        print("Could not fetch new Bitcoin data.")
+
+    print("\n" + "="*50 + "\n")
+
+    # --- Step 2: Updating Fear & Greed Index Data ---
+    print("--- Step 2: Updating Fear & Greed Index Data ---")
+    fg_df = get_fear_greed_data()
+    if fg_df is not None and not fg_df.empty:
+        output_path = os.path.join(DATASET_DIR, 'fear_greed_index.csv')
+        fg_df.to_csv(output_path, index=False)
+        print(f"Fear & Greed Index data successfully saved to: {output_path}")
+    else:
+        print("Could not fetch new Fear & Greed Index data.")
