@@ -121,7 +121,6 @@ def get_fear_greed_data(api_url="https://api.alternative.me/fng/", limit=0) -> O
 
         df = pd.DataFrame(data)
 
-        # [Core Fix] Create 'date' column from 'timestamp'
         # The API returns the timestamp as a string of seconds (Unix time)
         df['timestamp'] = pd.to_numeric(df['timestamp'])
         # Convert it to datetime objects and take only the date part

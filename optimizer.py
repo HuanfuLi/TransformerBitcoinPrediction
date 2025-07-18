@@ -27,7 +27,7 @@ else:
     DEVICE = torch.device("cpu")
     print("No GPU detected, using CPU.")
 
-# --- Model Definition (Unchanged) ---
+# --- Model Definition ---
 class PositionalEncoding(nn.Module):
     """Injects positional information into the input embeddings."""
     def __init__(self, d_model, max_len=5000):
@@ -285,6 +285,6 @@ def run_optimization(n_trials=50):
 
 if __name__ == "__main__":
     try:
-        run_optimization(n_trials=50) # Adjust n_trials as needed
+        run_optimization(n_trials=1) # Adjust n_trials as needed
     except (FileNotFoundError, ValueError) as e:
         print(f"\nOperation terminated: {e}")
