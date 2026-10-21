@@ -1,88 +1,169 @@
-# 比特币价格预测精简版系统
+# Easy Bitcoin on Transformer 项目
 
-这是一个基于 Transformer 模型的比特币价格预测系统（精简版）。它整合了从数据获取、模型自动优化到训练和预测的完整流程，旨在提供一个清晰、易于理解且功能完备的深度学习预测范例。
+## 项目概述
 
-## 系统原理
+Easy Bitcoin on Transformer 是一个基于 Python 的比特币价格预测系统，使用 Transformer 模型进行时间序列预测。该项目整合了比特币历史价格数据、恐惧贪婪指数（Fear & Greed Index），并通过特征工程、相关性分析和超参数优化来提升预测精度。项目支持多特征预测，包括技术指标（如移动平均线、RSI、MACD、布林带）和情绪指标。
 
-本系统的工作流程遵循数据驱动的机器学习项目标准步骤，具体如下：
+项目主要功能包括数据获取、特征工程、特征选择、模型优化、训练与预测，以及可视化结果。它还包含了**早停（Early Stopping）机制**以防止过拟合，能够**自动保存最佳模型**，并提供了一个独立的**基准测试框架**，用于在纯净的人工数据集上验证模型性能。
 
-1.  **数据获取 (`update_data.py`)**:
-    系统首先通过调用币安（Binance）的公共 API 来获取最新的比特币兑美元（BTC/USDT）的日K历史数据。这些数据包含了开盘价、收盘价、最高价、最低价和交易量，并被保存为 `dataset/btc.csv` 文件，作为后续所有分析和训练的基础。
+**当前版本日期：** 2025年7月19日  
+**作者/维护者：** HuanfuLi  
+**依赖环境：** Python 3.8+
 
-2.  **超参数优化 (`optimize_transformer.py`)**:
-    为了让 Transformer 模型达到最佳性能，需要为其选择合适的超参数（如网络层数、学习率等）。此脚本使用 `Optuna` 这个强大的贝叶斯优化框架，自动进行数十次训练试验，以找到能让模型在验证集上损失最小的超参数组合。找到的最佳参数将被自动写入 `config/config_transformer.yaml` 配置文件中。
+## 主要功能
 
-3.  **模型训练与预测 (`main.py`)**:
-    这是系统的核心执行脚本。它首先加载 `config_transformer.yaml` 中的最优配置，然后读取全部历史数据进行模型训练。训练完成后，模型会根据最近的历史数据，对未来5天的比特币收盘价进行预测。
+1.  **数据更新（update\_data.py）**：
 
-4.  **结果可视化**:
-    为了直观地评估预测结果，`main.py` 会生成一个图表。该图表将预测开始日期前的 **25天历史价格** 与模型预测的 **5天未来价格** 绘制在一起，形成一个30天的连续窗口。这使得我们可以直观地看到预测价格与历史趋势的衔接关系。
+      * 从 BitMEX API 获取比特币历史K线数据（开盘价、最高价、最低价、收盘价、交易量）。
+      * 从 Alternative.me API 获取恐惧贪婪指数数据。
+      * 保存数据到 `dataset/btc.csv` 和 `dataset/fear_greed_index.csv`。
 
-## 文件结构
+2.  **特征工程（feature\_engineer.py）**：
 
-```
-.
-├── config/
-│   └── config_transformer.yaml   # (自动生成) 优化后的模型配置文件
-├── dataset/
-│   └── btc.csv                   # (自动生成) 比特币历史价格数据
-├── outputs/
-│   └── plots/
-│       └── *.png                 # (自动生成) 最终的预测结果图表
-├── update_data.py                # 脚本1: 用于获取和更新数据
-├── optimize_transformer.py       # 脚本2: 用于模型超参数优化
-├── main.py                       # 脚本3: 用于训练、预测和绘图的核心程序
-└── requirements.txt              # 项目所需的Python依赖库
-```
+      * 合并比特币价格和恐惧贪婪指数数据。 
+      * 计算移动平均线（MA）、相对强弱指数（RSI）、平滑异同移动平均线（MACD）、布林带（Bollinger Bands）等多种技术指标。
+      * 计算情绪衍生特征。 
+      * 处理缺失值，裁切初始无效数据，并按类别排序列。
+      * 保存最终特征数据集到 `dataset/btc_features.csv`。
 
-## 使用方法
+3.  **特征选择（feature\_correlation.py）**：
 
-请严格按照以下步骤操作，以确保系统正常运行。
+      * 加载 `btc_features.csv`，计算每个特征与目标（收盘价）的Pearson相关系数。 
+      * 使用随机森林模型计算特征重要性。 
+      * 基于相关性和重要性建议Top N个特征，并保存到 `config/suggested_features.yaml`。 
 
-### 1. 环境准备
+4.  **模型优化（optimizer.py）**：
 
-首先，你需要安装所有必需的 Python 库。
+      * 加载建议的特征列表。
+      * 使用Optuna进行Transformer模型超参数优化（如 `d_model`, `nhead`, `dropout` 等）。
+      * 生成包含最优参数、数据范围和特征列表的配置文件 `config/config_transformer.yaml`。
 
-**a. 创建虚拟环境 (推荐)**
-```bash
-python -m venv venv
-source venv/bin/activate  # on Windows use `venv\Scripts\activate`
-```
+5.  **模型训练与预测（main.py）**：
 
-**b. 安装依赖**
-将上面的 `requirements.txt` 文件内容保存后，运行以下命令进行安装：
-```bash
-pip install -r requirements.txt
-```
-> **注意**: 对于 **Apple Silicon (M1/M2/M3) 用户**，为了启用 MPS GPU 加速，建议访问 [PyTorch 官网](https://pytorch.org/) 获取并运行针对你的设备推荐的 `pip` 或 `conda` 安装命令，以确保安装了正确版本的 PyTorch。
+      * 读取 `config_transformer.yaml` 中的配置。
+      * **新增功能**：训练过程中监控验证集的损失，并实现**早停机制**。如果验证损失在设定的耐心值（如40个周期）内没有改善，将自动停止训练以防止过拟合。
+      * **新增功能**：在训练结束后，自动将验证集上表现**最佳的模型权重**保存到 `dataset/models/` 目录中，以便未来直接使用。
+      * 加载最佳模型，在测试集上进行最终预测，并生成可视化图表。
 
-### 2. 执行流程
+## 安装要求
 
-请按顺序执行以下三个脚本：
+  * **Python 版本：** 3.8 或更高。
+  * **所需库：** 通过 `pip install -r requirements.txt` 安装：
+    ```
+    pandas
+    numpy
+    torch
+    optuna
+    pyyaml
+    matplotlib
+    scikit-learn
+    requests
+    ```
+  * **硬件要求：** 支持CUDA或MPS的GPU可显著加速训练（否则使用CPU）。
+  * **目录结构：**
+    ```
+    BitcoinConcise/
+    ├── dataset/
+    │   ├── models/           # (新增) 保存训练好的模型
+    │   ├── btc.csv
+    │   ├── btc_artificial_pure.csv  # (新增) 人工数据集
+    │   ├── fear_greed_index.csv
+    │   └── btc_features.csv
+    ├── config/
+    ├── outputs/plots/
+    ├── artificial_dataset.py     # (新增) 人工数据生成脚本
+    ├── bench_test_main.py        # (新增) 基准测试主脚本
+    ├── update_data.py
+    ├── feature_engineer.py
+    ├── feature_correlation.py
+    ├── optimizer.py
+    ├── main.py
+    └── README.md
+    ```
 
-* **第一步：获取数据**
-    运行 `update_data.py` 来下载最新的比特币历史价格数据。
+## 使用说明
+
+### 标准工作流（真实数据预测）
+
+项目采用模块化设计，按以下顺序运行脚本以完成完整工作流：
+
+1.  **更新数据：**
+
     ```bash
     python update_data.py
     ```
-    执行成功后，你会在 `dataset` 文件夹下看到 `btc.csv` 文件。
 
-* **第二步：优化模型参数**
-    运行 `optimizer.py` 为模型寻找最佳超参数。这个过程会进行多次试验，可能需要几分钟到十几分钟不等。
+2.  **进行特征工程：**
+
+    ```bash
+    python feature_engineer.py
+    ```
+
+3.  **（可选）特征选择：**
+
+    ```bash
+    python feature_correlation.py
+    ```
+
+4.  **（可选）模型优化：**
+
     ```bash
     python optimizer.py
     ```
-    执行成功后，你会在 `config` 文件夹下看到 `config_transformer.yaml` 文件。
 
-* **第三步：训练模型并进行预测**
-    运行 `main.py` 来启动最终的训练和预测流程。
+5.  **训练与预测：**
+
     ```bash
     python main.py
     ```
-    脚本会加载配置和数据，训练模型，在控制台输出未来5天的预测价格，并最终在 `outputs/plots` 文件夹下生成一张可视化的预测图表。
 
-## 输出文件说明
+      * 此脚本会自动加载配置文件，训练模型，并使用早停和模型保存功能。最终生成对真实数据的预测图。
 
--   `dataset/btc.csv`: 包含比特币历史价格（UTC时间）的 CSV 文件。
--   `config/config_transformer.yaml`: 包含 Transformer 模型最佳超参数和训练设置的 YAML 文件。
--   `outputs/plots/transformer_30day_window_*.png`: 包含历史价格与预测价格对比的30天窗口图表，文件名中的 `*` 是生成图表时的时间戳。
+-----
+
+## 🔬 基准测试框架 (Benchmark Testing)
+
+为了独立验证模型的核心学习能力，项目提供了一个基准测试框架。它使用**纯净无噪声的数学曲线**（如直线、正弦波）来测试模型是否能正确学习基本模式，而不是记忆噪声。
+
+### 基准测试工作流
+
+1.  **步骤一：生成人工数据集**
+
+      * 打开 `artificial_dataset.py` 文件。
+      * 在顶部的用户配置区，设置 `DATASET_SHAPE`为你想要的曲线形状（如 `"UPWARD_TREND"`, `"SINUSOID"`, `"INVERSE"`）。
+      * 运行脚本：
+        ```bash
+        python artificial_dataset.py
+        ```
+      * 这将在 `dataset/` 目录下生成一个名为 `btc_artificial_pure.csv` 的纯净数据集。 
+
+2.  **步骤二：基于人工数据进行特征工程**
+
+      * 这是**关键一步**。打开 `feature_engineer.py` 文件。
+      * 找到 `__init__` 方法中的这一行：
+        ```python
+        self.btc_path = os.path.join(data_dir, 'btc.csv')
+        ```
+      * **临时修改**它，将输入文件名从 `'btc.csv'` 改为 `'btc_artificial_pure.csv'`：
+        ```python
+        self.btc_path = os.path.join(data_dir, 'btc_artificial_pure.csv') # 临时修改
+        ```
+      * 保存文件后，运行特征工程脚本：
+        ```bash
+        python feature_engineer.py
+        ```
+      * 这将使用你生成的人工数据覆盖 `dataset/btc_features.csv`。
+
+3.  **步骤三：运行基准测试**
+
+      * 直接运行 `bench_test_main.py`：
+        ```bash
+        python bench_test_main.py
+        ```
+      * 该脚本被专门设计用于处理纯净数据：
+          * 它会自动启用 `IS_BENCHMARK_TRAINING = True` 标志。
+          * 它会使用一个**简化的、经过正则化处理的模型配置** (`BENCHMARK_MODEL_CONFIG`) 来防止在简单数据上发生过拟合。
+          * 它使用了一个包含**方向性损失**的 `CombinedLoss` 函数，迫使模型学习曲线的正确走向，而不是输出一条平线。
+      * 测试完成后，会生成一张图表，展示模型对纯净数学曲线的拟合情况。
+
+**重要提示：** 完成基准测试后，请记得将 `feature_engineer.py` 中的 `self.btc_path` **改回** `'btc.csv'`，以便继续处理真实数据。

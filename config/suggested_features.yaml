@@ -1,0 +1,12 @@
+features_to_use:
+- close
+- low
+- high
+- open
+- MA_5
+- MA_10
+- BB_middle
+- MA_20
+- BB_upper
+- BB_lower
+- MA_50
