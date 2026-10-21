@@ -27,7 +27,7 @@ else:
     DEVICE = torch.device("cpu")
     print("No GPU detected, using CPU.")
 
-# --- Model Definition (Unchanged) ---
+# --- Model Definition ---
 class PositionalEncoding(nn.Module):
     """Injects positional information into the input embeddings."""
     def __init__(self, d_model, max_len=5000):

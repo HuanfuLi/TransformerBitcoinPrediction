@@ -1,0 +1,33 @@
+data_settings:
+  test_end_date: '2025-07-18'
+  test_start_date: '2025-04-19'
+  train_end_date: '2025-01-18'
+  train_start_date: '2022-10-23'
+  validation_end_date: '2025-04-18'
+  validation_start_date: '2025-01-19'
+feature_settings:
+  features_to_use:
+  - close
+  - high
+  - low
+  - BB_upper
+  - BB_middle
+  - MA_20
+  - MA_10
+  - MA_5
+  - open
+  - MA_50
+  - BB_lower
+model_settings:
+  batch_size: 64
+  epochs: 200
+  learning_rate: 0.000998886000193377
+  predicted_days: 5
+  time_step: 60
+model_specific:
+  Transformer:
+    d_model: 128
+    dim_feedforward: 192
+    dropout: 0.18493520134299773
+    nhead: 4
+    num_encoder_layers: 4
