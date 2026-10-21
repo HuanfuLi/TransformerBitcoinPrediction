@@ -1,5 +1,3 @@
-# 文件名: feature_correlation.py
-
 import pandas as pd
 import numpy as np
 import yaml
@@ -198,13 +196,13 @@ class FeatureSelector:
         
         corr = self.calculate_correlations()
         if not corr.empty:
-            print("\nTop 10 相关系数（绝对值）：")
-            print(corr.head(10))
+            print("\n相关系数（绝对值）：")
+            print(corr)
         
         imp = self.calculate_feature_importances()
         if not imp.empty:
-            print("\nTop 10 特征重要性：")
-            print(imp.head(10))
+            print("\n特征重要性：")
+            print(imp)
         
         self.suggest_features(corr, imp)
 

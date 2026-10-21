@@ -1,5 +1,3 @@
-# filename: optimizer.py (Corrected)
-
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -168,5 +166,5 @@ def run_optimization(n_trials=50):
     print(f"\nBest configuration saved to: config/config_transformer.yaml")
 
 if __name__ == "__main__":
-    try: run_optimization(n_trials=3)
+    try: run_optimization(n_trials=1)
     except (FileNotFoundError, ValueError) as e: print(f"\nOperation terminated: {e}")
